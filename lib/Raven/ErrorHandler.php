@@ -135,6 +135,9 @@ class Raven_ErrorHandler
                 @$error['file'], @$error['line']
             );
             $this->handleException($e, true);
+            if ($this->client->curl_method === 'async') {
+                $this->client->onShutdown();
+            }
         }
     }
 
