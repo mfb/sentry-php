@@ -51,6 +51,12 @@ class Raven_ErrorHandler
      */
     protected $error_types = null;
 
+    /**
+     * @var bool
+     * Used to prevent duplicate exceptions in PHP 7.0+.
+     */
+    protected $exception_handled;
+
     public function __construct($client, $send_errors_last = false, $error_types = null,
                                 $__error_types = null)
     {
@@ -76,6 +82,11 @@ class Raven_ErrorHandler
     public function handleException($e, $isError = false, $vars = null)
     {
         $e->event_id = $this->client->captureException($e, null, null, $vars);
+        // Indicate that exception handling is enabled so we can ignore Uncaught Error
+        // fatal errors in PHP 7.0+.
+        if (!$isError) {
+            $this->exception_handled = true;
+        }
 
         if (!$isError && $this->call_existing_exception_handler) {
             if ($this->old_exception_handler !== null) {
@@ -129,7 +140,7 @@ class Raven_ErrorHandler
             return;
         }
 
-        if ($this->shouldCaptureFatalError($error['type'])) {
+        if ($this->shouldCaptureFatalError($error['type'], $error['message'])) {
             $e = new ErrorException(
                 @$error['message'], 0, @$error['type'],
                 @$error['file'], @$error['line']
@@ -138,12 +149,16 @@ class Raven_ErrorHandler
         }
     }
 
-    public function shouldCaptureFatalError($type)
+    public function shouldCaptureFatalError($type, $message)
     {
-        // Do not capture E_ERROR since those can be caught by userland since PHP 7.0
-        // E_ERROR should already be handled by the exception handler
-        // This prevents duplicated exceptions in PHP 7.0+
-        if (PHP_VERSION_ID >= 70000 && $type === E_ERROR) {
+        // If exception handling is enabled, do not capture "Uncaught" or
+        // "Exception thrown without a stack frame" fatal errors. These should
+        // have already been handled as exceptions. This prevents duplicate
+        // exceptions in PHP 7.0+.
+        if (PHP_VERSION_ID >= 70000 && $type === E_ERROR
+            && $this->exception_handled
+            && (strpos($message, 'Uncaught') === 0 || strpos($message, 'Exception thrown without a stack frame') === 0)
+        ) {
             return false;
         }
 
