@@ -23,6 +23,7 @@ final class KeyValueDataFilter
         'secret',
         'password',
         'passwd',
+        'pass',
         'pwd',
         'key',
         'jwt',
